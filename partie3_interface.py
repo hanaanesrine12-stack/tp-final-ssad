@@ -11,6 +11,7 @@ COLORS = {
     "surface_dark": "#F4F8FD", "code": "#176B3A",
 }
 
+# --- Les 3 cas du sujet (indices 0, 1, 2) -----------------------------------
 CASE_SPECS = [
     {"label": "Cas 1 — 3 caractères, uniquement 0 ou 1",
      "charset": passwords.BINARY, "length": 3},
@@ -20,9 +21,11 @@ CASE_SPECS = [
      "charset": None, "length": None},
 ]
 
+# --- Politique de verrouillage à la connexion -------------------------------
 MAX_FAILS = 3
 LOCK_SECONDS = 20
 
+# --- Limite de temps pour la force brute ------------------------------------
 BRUTE_FORCE_SECONDS = 10
 
 ATTACK_METHODS = ["Dictionnaire", "Force brute", "Dictionnaire puis force brute"]
@@ -33,8 +36,10 @@ STOP_REASONS = {
     "exhausted": "tout l'espace de recherche a été parcouru sans succès.",
 }
 
+
 def _new_login_state():
     return {"phase": 1, "fails": 0, "locked_until": None, "blocked": False}
+
 
 def _strict_problems(password, charset, length):
     """Liste précise des raisons de refus pour les cas 1 et 2."""
@@ -50,18 +55,20 @@ def _strict_problems(password, charset, length):
             % (", ".join(repr(character) for character in invalid), charset))
     return problems
 
+
 class Partie3Page(ttk.Frame):
     """Partie 3 : création de compte (par essai), connexion protégée et attaques."""
 
     def __init__(self, parent):
         super().__init__(parent, padding=18)
-        self.accounts = {}
+        self.accounts = {}          # username -> {record, case_index, password_used, login}
         self._attack_generation = 0
         self._attack_running = False
         self._attack_start = 0.0
         self._build()
         self._refresh_account_lists()
 
+    # ------------------------------------------------------------------ UI
     def _build(self):
         header = ttk.Frame(self)
         header.pack(fill="x", pady=(0, 10))
@@ -92,6 +99,7 @@ class Partie3Page(ttk.Frame):
         self._build_login_tab(login_tab)
         self._build_attack_tab(attack_tab)
 
+    # ---------------------------------------------------------- Création
     def _build_create_tab(self, parent):
         form = ttk.LabelFrame(parent, text="Nouveau compte (essai)", padding=12)
         form.pack(fill="x")
@@ -175,7 +183,7 @@ class Partie3Page(ttk.Frame):
         self.accounts[username] = {
             "record": record,
             "case_index": case_index,
-            "password_used": password,
+            "password_used": password,   # conservé pour alimenter l'attaque (démo uniquement)
             "login": _new_login_state(),
         }
         self._set_create_feedback("Compte « %s » créé.\n%s" % (username, message), "ok")
@@ -183,6 +191,7 @@ class Partie3Page(ttk.Frame):
         self.create_password.delete(0, "end")
         self._refresh_account_lists()
 
+    # ----------------------------------------------------------- Connexion
     def _build_login_tab(self, parent):
         form = ttk.LabelFrame(parent, text="Connexion", padding=12)
         form.pack(fill="x")
@@ -231,7 +240,7 @@ class Partie3Page(ttk.Frame):
                 remaining = int(state["locked_until"] - now) + 1
                 return self._set_login_status(
                     "Compte verrouillé. Réessayez dans %ds." % remaining, "error")
-            state["locked_until"] = None
+            state["locked_until"] = None   # le verrou vient d'expirer
 
         if passwords.check_record(account["record"], password):
             state["phase"], state["fails"], state["locked_until"] = 1, 0, None
@@ -279,6 +288,7 @@ class Partie3Page(ttk.Frame):
             self.after(1000, tick)
         self.after(1000, tick)
 
+    # ------------------------------------------------------------- Attaque
     def _build_attack_tab(self, parent):
         form = ttk.LabelFrame(parent, text="Paramètres de l'attaque", padding=12)
         form.pack(fill="x")
@@ -398,31 +408,30 @@ class Partie3Page(ttk.Frame):
     def _finish_dictionary(self, generation, found, attempts, duration, combined=False):
         if found is not None:
             text = ("Statut : TROUVÉ (dictionnaire)\nMot de passe : %s\n"
-                    "Tentatives : %d\nTemps : %s\n"
-                    % (found, attempts, passwords.human_time(duration)))
+                    "Tentatives : %d\n"
+                    % (found, attempts))
         else:
             text = ("Statut : NON TROUVÉ (dictionnaire)\n"
                     "Raison : mot de passe absent du dictionnaire.\n"
-                    "Tentatives : %d\nTemps : %s\n"
-                    % (attempts, passwords.human_time(duration)))
+                    "Tentatives : %d\n"
+                    % (attempts,))
         self._finish(generation, text)
 
     def _finish_brute(self, generation, found, attempts, duration, reason,
                       combined=False, extra_attempts=0, extra_duration=0.0):
         if found is not None:
             text = ("Statut : TROUVÉ (force brute)\nMot de passe : %s\n"
-                    "Tentatives (force brute) : %d\nTemps (force brute) : %s\n"
-                    % (found, attempts, passwords.human_time(duration)))
+                    "Tentatives (force brute) : %d\n"
+                    % (found, attempts))
         else:
             reason_text = STOP_REASONS.get(reason, "raison inconnue.")
             text = ("Statut : NON TROUVÉ (force brute)\nRaison : %s\n"
-                    "Tentatives (force brute) : %d\nTemps (force brute) : %s\n"
-                    % (reason_text, attempts, passwords.human_time(duration)))
+                    "Tentatives (force brute) : %d\n"
+                    % (reason_text, attempts))
         if combined:
             total_attempts = extra_attempts + attempts
-            total_duration = extra_duration + duration
-            text += ("Total (dictionnaire + force brute) : %d tentatives, %s\n"
-                    % (total_attempts, passwords.human_time(total_duration)))
+            text += ("Total (dictionnaire + force brute) : %d tentatives\n"
+                    % (total_attempts,))
         self._finish(generation, text)
 
     def _finish(self, generation, text):
@@ -443,6 +452,7 @@ class Partie3Page(ttk.Frame):
         self.attack_log.see("end")
         self.attack_log.config(state="disabled")
 
+    # -------------------------------------------------------------- Divers
     def _refresh_account_lists(self):
         usernames = sorted(self.accounts)
         current = self.attack_target.get()
